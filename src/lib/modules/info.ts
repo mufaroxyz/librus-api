@@ -122,7 +122,11 @@ export default class Info extends Module {
             const semester = (startColumn: number) => {
                 const grades = _.map(
                     $(children[startColumn]).children('span.grade-box'),
-                    element => {
+                    (element) => {
+                        const title = $(element).find("a").attr("title")?.split("<br>");
+                        const parsedTitleValues = _.map(title, (e) => e.split(":")?.[1]?.trim().replace(/<[^>]*>?/gm, ''));
+                        const mappedValuesToKeys = _.zipObject(['category', 'date', 'teacher', 'counts_to_avarage', 'weight', 'whoAdded', 'comment'], parsedTitleValues)
+
                         return {
                             id: parseInt(
                                 $(element).find('a').attr('href')?.split('/')[
@@ -130,6 +134,7 @@ export default class Info extends Module {
                                 ] || '0'
                             ),
                             value: $(element).text().trim(),
+                            ...mappedValuesToKeys
                         };
                     }
                 );
@@ -143,7 +148,7 @@ export default class Info extends Module {
             const name = $(children[1]).text().trim();
             return {
                 name,
-                semester: [semester(2), semester(5), semester(6), semester(9)],
+                semester: [semester(2), semester(4), semester(5), semester(7)],
                 tempAvarage: avg(8),
                 avarage: avg(9),
             };
@@ -151,7 +156,7 @@ export default class Info extends Module {
 
         return await this.client.api.mapper(
             'przegladaj_oceny/uczen',
-            "table.decorated.stretch > tbody > tr[class^='line']:not([name]):nth-child(n+2),table.decorated.stretch > tr[class^='line']:not([name]):nth-child(n+2)",
+            "table.decorated.stretch > tbody > tr[class^='line']:not([name]):nth-child(n+1),table.decorated.stretch > tr[class^='line']:not([name]):nth-child(n+2)",
             parser
         );
     }

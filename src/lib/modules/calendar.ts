@@ -4,22 +4,18 @@ import Module from '../utils/Module';
 import _ from 'lodash';
 import Api from '../utils/api';
 import { AxiosResponse } from 'axios';
-import { Timetable } from '../../types';
+import { Timetable, TimetableEvent, TimetableEventType } from '../../types';
+
+
 
 function getCurrentWeekBoundaryDays() {
-    const currentDate = new Date();
-    const currentDay = currentDate.getDay();
-    const lessDays = currentDay === 0 ? 6 : currentDay - 1;
-    const monday = new Date(currentDate.getTime() - lessDays * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
-    const saturday = new Date(currentDate.getTime() + (6 - lessDays) * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
-
-    return [monday, saturday];
-}
-
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(today.getDate() + 1 + - today.getDay());
+    const end = new Date(today);
+    end.setDate(today.getDate() + 1 + (6 - today.getDay()));
+    return [ start.toISOString().split("T")[0], end.toISOString().split("T")[0] ];
+  }
 export default class Calendar extends Module {
     constructor(client: LibrusClient) {
         super(client);
@@ -50,13 +46,14 @@ export default class Calendar extends Module {
             return _.map($(table).find('td'), child => {
                 let attr = $(child).attr('onclick');
                 const id = attr && attr.match(/\/(\d*)'$/)?.[1];
-                return {
-                    id: parseInt(id ?? '-1'),
-                    day: `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${$(
-                        column
-                    ).text()}`,
-                    title: $(child).text().trim(),
-                };
+                const title = $(child).html();
+                const day = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${$(column).text()}`
+                const parsedEvent = parseTimetableEvent({
+                    title: title ?? "",
+                    id: id ?? "-1",
+                    day
+                });
+                return parsedEvent;
             });
         };
 
@@ -168,6 +165,7 @@ export default class Calendar extends Module {
                         obj[days[index].toLowerCase()] = {
                             title: lessonTitle?.trim(),
                             teacher: teacher?.trim()
+                            // teacher: "rodo to nie pokaze            "
                         };
                     })
 
@@ -206,3 +204,60 @@ export default class Calendar extends Module {
         });
     }
 }
+
+
+
+type TParseTimetableEvent = {
+    id: string;
+    title: string;
+    day: string;
+}
+function parseTimetableEvent({ id, title, day}: TParseTimetableEvent): TimetableEvent {
+    title = title.replace(/\n/g, "").trim();
+    const match = (rgx: RegExp) => title.match(rgx);
+
+    if(title.startsWith("Nieobecność")) {
+        const res = match(/^Nieobecność:.*?:\s(.*?)Godziny:\s(.*?)\sdo\s(.*?)$|^Nieobecność:.*?:\s(.*?)$/);
+        return {
+            id,
+            title: "Nieobecność nauczyciela",
+            type: TimetableEventType.TeacherAbsence,
+            teacher: res?.[1] ?? res?.[4],
+            timeStart: res?.[2],
+            timeEnd: res?.[3],
+        }
+    } else if(title.startsWith("Zastępstwo")) {
+        const res = match(/^Zastępstwo z (.*?) na lekcji nr: (\d+) \((.*?)\)$/)
+
+        return {
+            id,
+            title: "Zastępstwo",
+            type: TimetableEventType.TeacherChange,
+            teacher: res?.[1],
+            lessonNumber: res?.[2],
+            lesson: res?.[3]
+        }
+    } else if(/zapowiedzian./.test(title)) {
+        const res = match(/Nr lekcji: (\d+)<br><span class="przedmiot">(.+)<\/span>, (.+?)<br>(.+)(?:<br>Sala:&nbsp;(\d+))?/)
+        console.log(title, res);
+        return {
+            id,
+            title: "Zapowiedziana praca pisemna",
+            type: TimetableEventType.ScheduledClasswork,
+            lessonNumber: res?.[1],
+            lesson: res?.[2],
+            contents: res?.[3],
+            class: res?.[4],
+            classroom: res?.[5]
+        }
+    }
+
+    else {
+        return {
+            id,
+            title,
+            type: TimetableEventType.Unknown,
+        }
+    }
+}
+
